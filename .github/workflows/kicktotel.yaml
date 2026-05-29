@@ -95,7 +95,7 @@ jobs:
       - name: Create multi-part archive
         run: |
           7z a \
-            -v1900m \
+            -v40m \
             -mx=0 \
             output/${OUTPUT_NAME}.$(date +%Y%m%d_%H%M%S).7z \
             ./downloads/*
