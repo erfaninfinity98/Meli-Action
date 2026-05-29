@@ -54,20 +54,28 @@ jobs:
       - name: Extract m3u8 URL
         id: stream
         run: |
-          PAGE=$(curl \
+          VIDEO_ID=$(echo "${{ github.event.inputs.kick_url }}" | awk -F/ '{print $NF}')
+
+          echo "Video ID: $VIDEO_ID"
+
+          RESPONSE=$(curl \
+            -s \
             -L \
             -b cookies.txt \
             -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" \
-            "${{ github.event.inputs.kick_url }}")
+            "https://kick.com/api/v1/video/${VIDEO_ID}")
 
-          STREAM_URL=$(echo "$PAGE" | grep -oE 'https://[^"]+\.m3u8[^"]*' | head -n 1)
+          echo "$RESPONSE"
 
-          echo "$STREAM_URL"
+          STREAM_URL=$(echo "$RESPONSE" | jq -r '.source')
 
-          if [ -z "$STREAM_URL" ]; then
+          if [ "$STREAM_URL" = "null" ] || [ -z "$STREAM_URL" ]; then
             echo "Failed to extract m3u8 URL"
             exit 1
           fi
+
+          echo "Stream URL:"
+          echo "$STREAM_URL"
 
           echo "stream_url=$STREAM_URL" >> $GITHUB_OUTPUT
 
