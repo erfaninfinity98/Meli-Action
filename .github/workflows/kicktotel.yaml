@@ -46,7 +46,7 @@ jobs:
 
           python3 -m pip install --upgrade pip
 
-          pip install yt-dlp
+          pip install -U "yt-dlp[default]"
 
       - name: Create cookies.txt
         run: |
@@ -58,6 +58,7 @@ jobs:
         run: |
           yt-dlp \
             --cookies cookies.txt \
+            --extractor-args "kick:impersonate" \
             -F \
             "${{ github.event.inputs.kick_url }}"
 
@@ -66,6 +67,7 @@ jobs:
         run: |
           STREAM_URL=$(yt-dlp \
             --cookies cookies.txt \
+            --extractor-args "kick:impersonate" \
             -f "bv*+ba/b" \
             -g \
             "${{ github.event.inputs.kick_url }}")
