@@ -34,7 +34,7 @@ jobs:
       - name: Prepare directories
         run: |
           mkdir -p downloads
-          mkdir -p output
+          mkdir -p outputs
 
       - name: Install dependencies
         run: |
@@ -42,15 +42,8 @@ jobs:
 
           sudo apt-get install -y \
             ffmpeg \
-            p7zip-full
-
-          python3 -m pip install --upgrade pip
-
-          pip install -U \
-            yt-dlp \
-            curl-cffi
-
-          yt-dlp --version
+            p7zip-full \
+            jq
 
       - name: Create cookies.txt
         run: |
@@ -58,27 +51,23 @@ jobs:
           ${{ secrets.KICK_COOKIES }}
           EOF
 
-      - name: List impersonation targets
-        run: |
-          yt-dlp --list-impersonate-targets
-
-      - name: Show available formats
-        run: |
-          yt-dlp \
-            --cookies cookies.txt \
-            --impersonate chrome \
-            -F \
-            "${{ github.event.inputs.kick_url }}"
-
-      - name: Extract highest quality stream URL
+      - name: Extract m3u8 URL
         id: stream
         run: |
-          STREAM_URL=$(yt-dlp \
-            --cookies cookies.txt \
-            --impersonate chrome \
-            -f "bv*+ba/b" \
-            -g \
+          PAGE=$(curl \
+            -L \
+            -b cookies.txt \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" \
             "${{ github.event.inputs.kick_url }}")
+
+          STREAM_URL=$(echo "$PAGE" | grep -oE 'https://[^"]+\.m3u8[^"]*' | head -n 1)
+
+          echo "$STREAM_URL"
+
+          if [ -z "$STREAM_URL" ]; then
+            echo "Failed to extract m3u8 URL"
+            exit 1
+          fi
 
           echo "stream_url=$STREAM_URL" >> $GITHUB_OUTPUT
 
@@ -89,7 +78,7 @@ jobs:
             -y \
             -i "${{ steps.stream.outputs.stream_url }}" \
             -c copy \
-            ./downloads/${OUTPUT_NAME}.mp4
+            "downloads/${OUTPUT_NAME}.mp4"
 
       - name: Download partial stream
         if: ${{ github.event.inputs.start_time != '' || github.event.inputs.end_time != '' }}
@@ -100,15 +89,18 @@ jobs:
             -to "${{ github.event.inputs.end_time }}" \
             -i "${{ steps.stream.outputs.stream_url }}" \
             -c copy \
-            ./downloads/${OUTPUT_NAME}.mp4
+            "downloads/${OUTPUT_NAME}.mp4"
 
       - name: Create multi-part archive
         run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
           7z a \
             -v40m \
-            output/${OUTPUT_NAME}.$(date +%Y%m%d_%H%M%S).7z \
-            ./downloads/*
-          
+            -mx=0 \
+            "outputs/${OUTPUT_NAME}_${TIMESTAMP}.7z" \
+            downloads/*
+
       - name: Upload to Telegram
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
@@ -116,9 +108,9 @@ jobs:
 
         shell: bash
         run: |
+          shopt -s nullglob
 
-          for file in output/*
-          do
+          for file in outputs/*; do
 
             echo ""
             echo "================================="
@@ -127,10 +119,9 @@ jobs:
 
             SUCCESS=0
 
-            while [ $SUCCESS -eq 0 ]
-            do
+            while [ $SUCCESS -eq 0 ]; do
 
-              RESPONSE=$(curl -s \
+              RESPONSE=$(curl \
                 -F document=@"$file" \
                 "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument?chat_id=${CHAT_ID}")
 
