@@ -1,0 +1,168 @@
+name: Kick Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      kick_url:
+        description: "Kick VOD URL"
+        required: true
+
+      start_time:
+        description: "Start time (HH:MM:SS)"
+        required: false
+
+      end_time:
+        description: "End time (HH:MM:SS)"
+        required: false
+
+      output_name:
+        description: "Output file name"
+        required: false
+        default: "kick_clip"
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+
+    env:
+      OUTPUT_NAME: ${{ github.event.inputs.output_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare directories
+        run: |
+          mkdir -p downloads
+          mkdir -p output
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            ffmpeg \
+            p7zip-full
+
+          python3 -m pip install --upgrade pip
+
+          pip install yt-dlp
+
+      - name: Create cookies.txt
+        run: |
+          cat << 'EOF' > cookies.txt
+          ${{ secrets.KICK_COOKIES }}
+          EOF
+
+      - name: Show available formats
+        run: |
+          yt-dlp \
+            --cookies cookies.txt \
+            -F \
+            "${{ github.event.inputs.kick_url }}"
+
+      - name: Extract highest quality stream URL
+        id: stream
+        run: |
+          STREAM_URL=$(yt-dlp \
+            --cookies cookies.txt \
+            -f "bv*+ba/b" \
+            -g \
+            "${{ github.event.inputs.kick_url }}")
+
+          echo "stream_url=$STREAM_URL" >> $GITHUB_OUTPUT
+
+      - name: Download full stream
+        if: ${{ github.event.inputs.start_time == '' && github.event.inputs.end_time == '' }}
+        run: |
+          ffmpeg \
+            -y \
+            -i "${{ steps.stream.outputs.stream_url }}" \
+            -c copy \
+            ./downloads/${OUTPUT_NAME}.mp4
+
+      - name: Download partial stream
+        if: ${{ github.event.inputs.start_time != '' || github.event.inputs.end_time != '' }}
+        run: |
+          ffmpeg \
+            -y \
+            -ss "${{ github.event.inputs.start_time }}" \
+            -to "${{ github.event.inputs.end_time }}" \
+            -i "${{ steps.stream.outputs.stream_url }}" \
+            -c copy \
+            ./downloads/${OUTPUT_NAME}.mp4
+
+      - name: Create multi-part archive
+        run: |
+          7z a \
+            -v1900m \
+            -mx=0 \
+            output/${OUTPUT_NAME}.$(date +%Y%m%d_%H%M%S).7z \
+            ./downloads/*
+
+      - name: Upload to Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+
+        shell: bash
+        run: |
+
+          for file in output/*
+          do
+
+            echo ""
+            echo "================================="
+            echo "Uploading: $file"
+            echo "================================="
+
+            SUCCESS=0
+
+            while [ $SUCCESS -eq 0 ]
+            do
+
+              RESPONSE=$(curl -s \
+                -F document=@"$file" \
+                "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument?chat_id=${CHAT_ID}")
+
+              echo "$RESPONSE"
+
+              OK=$(echo "$RESPONSE" | jq -r '.ok')
+
+              if [ "$OK" = "true" ]; then
+
+                echo ""
+                echo "Upload successful."
+
+                SUCCESS=1
+
+              else
+
+                ERROR_DESC=$(echo "$RESPONSE" | jq -r '.description')
+
+                RETRY_AFTER=$(echo "$RESPONSE" | jq -r '.parameters.retry_after // 10')
+
+                echo ""
+                echo "Upload failed:"
+                echo "$ERROR_DESC"
+
+                echo ""
+                echo "Retrying after ${RETRY_AFTER}s..."
+
+                sleep "$RETRY_AFTER"
+
+              fi
+
+            done
+
+          done
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f cookies.txt
+
+          rm -rf downloads
+          rm -rf outputs
+
+          rm -rf temp
