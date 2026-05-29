@@ -3,9 +3,10 @@ name: Kick Downloader
 on:
   workflow_dispatch:
     inputs:
-      kick_url:
-        description: "Kick VOD URL"
+      stream_url:
+        description: "Direct m3u8 URL"
         required: true
+        default: "https://d26yk4zpyhjeeq.cloudfront.net/v1/manifest/..."
 
       start_time:
         description: "Start time (HH:MM:SS)"
@@ -45,46 +46,12 @@ jobs:
             p7zip-full \
             jq
 
-      - name: Create cookies.txt
-        run: |
-          cat << 'EOF' > cookies.txt
-          ${{ secrets.KICK_COOKIES }}
-          EOF
-
-      - name: Extract m3u8 URL
-        id: stream
-        run: |
-          VIDEO_ID=$(echo "${{ github.event.inputs.kick_url }}" | awk -F/ '{print $NF}')
-
-          echo "Video ID: $VIDEO_ID"
-
-          RESPONSE=$(curl \
-            -s \
-            -L \
-            -b cookies.txt \
-            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" \
-            "https://kick.com/api/v1/video/${VIDEO_ID}")
-
-          echo "$RESPONSE"
-
-          STREAM_URL=$(echo "$RESPONSE" | jq -r '.source')
-
-          if [ "$STREAM_URL" = "null" ] || [ -z "$STREAM_URL" ]; then
-            echo "Failed to extract m3u8 URL"
-            exit 1
-          fi
-
-          echo "Stream URL:"
-          echo "$STREAM_URL"
-
-          echo "stream_url=$STREAM_URL" >> $GITHUB_OUTPUT
-
       - name: Download full stream
         if: ${{ github.event.inputs.start_time == '' && github.event.inputs.end_time == '' }}
         run: |
           ffmpeg \
             -y \
-            -i "${{ steps.stream.outputs.stream_url }}" \
+            -i "${{ github.event.inputs.stream_url }}" \
             -c copy \
             "downloads/${OUTPUT_NAME}.mp4"
 
@@ -95,9 +62,22 @@ jobs:
             -y \
             -ss "${{ github.event.inputs.start_time }}" \
             -to "${{ github.event.inputs.end_time }}" \
-            -i "${{ steps.stream.outputs.stream_url }}" \
+            -i "${{ github.event.inputs.stream_url }}" \
             -c copy \
             "downloads/${OUTPUT_NAME}.mp4"
+
+      - name: Verify output file
+        run: |
+          ls -lh downloads/
+
+          FILE_SIZE=$(stat -c%s "downloads/${OUTPUT_NAME}.mp4")
+
+          echo "File size: $FILE_SIZE"
+
+          if [ "$FILE_SIZE" -lt 1000000 ]; then
+            echo "Downloaded file is too small"
+            exit 1
+          fi
 
       - name: Create multi-part archive
         run: |
@@ -168,8 +148,6 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          rm -f cookies.txt
-
           rm -rf downloads
           rm -rf outputs
 
