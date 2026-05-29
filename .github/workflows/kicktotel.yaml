@@ -96,10 +96,9 @@ jobs:
         run: |
           7z a \
             -v40m \
-            -mx=0 \
             output/${OUTPUT_NAME}.$(date +%Y%m%d_%H%M%S).7z \
             ./downloads/*
-
+          
       - name: Upload to Telegram
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
