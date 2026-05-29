@@ -46,21 +46,21 @@ jobs:
 
           python3 -m pip install --upgrade pip
 
-          pip install -U yt-dlp
+          pip install -U \
+            yt-dlp \
+            curl-cffi
 
-          sudo apt-get install -y pipx
-
-          pipx ensurepath
-
-          pipx install "yt-dlp[default]"
-
-          python3 -m yt_dlp --version
+          yt-dlp --version
 
       - name: Create cookies.txt
         run: |
           cat << 'EOF' > cookies.txt
           ${{ secrets.KICK_COOKIES }}
           EOF
+
+      - name: List impersonation targets
+        run: |
+          yt-dlp --list-impersonate-targets
 
       - name: Show available formats
         run: |
