@@ -1,0 +1,24 @@
+name: Send Files via Telegram Bot
+
+on:
+  workflow_dispatch:   # اجرای دستی از GitHub
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Send files to Telegram
+        run: |
+          FILES=$(find downloads/ -type f)
+
+          for file in $FILES; do
+            echo "Sending $file ..."
+            curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument \
+              -F chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+              -F document=@"$file" \
+              -F caption="File: $file"
+          done

@@ -1,0 +1,28 @@
+name: Clean Downloads Directory
+
+on:
+  workflow_dispatch:   # اجرای دستی از تب Actions
+  push:
+    branches:
+      - main           # یا شاخه‌ای که می‌خوای
+
+jobs:
+  clean-downloads:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Remove downloads directory
+        run: |
+          rm -rf downloads
+          echo "Downloads directory removed."
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Delete downloads directory via workflow" || echo "No changes to commit"
+          git push

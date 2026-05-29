@@ -1,0 +1,28 @@
+name: Remove file
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  remove-file:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Remove file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/url_downloader.yml || true
+          git rm .github/workflows/pornhub_downloader.yml || true
+          git rm .github/workflows/soundcloud.yml || true
+          git rm .github/workflows/telegram_downloader.yml || true
+          git rm .github/workflows/pixeldrain_downloader.yml || true
+          git rm google_service.json || true
+          git rm .github/workflows/deldel.yml
+          git commit -m "Remove file" || echo "Nothing to commit"
+          git push
